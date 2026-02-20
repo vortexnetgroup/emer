@@ -1,8 +1,9 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import requests
 import settings
 import os
+import atexit
 
 # --- Bot Setup ---
 intents = discord.Intents.default()
@@ -11,6 +12,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # --- API Configuration ---
 BASE_URL = "https://alerts.globaleas.org/api/v1/alerts"
+HEADERS = {"User-Agent": "emerbot-vortexnet-python"}
 
 # --- EAS Type Mapping ---
 EAS_TYPES = {
@@ -78,7 +80,7 @@ async def fetch_alerts(endpoint, params=None):
         loop = bot.loop
         response = await loop.run_in_executor(
             None, 
-            lambda: requests.get(f"{BASE_URL}/{endpoint}", params=params)
+            lambda: requests.get(f"{BASE_URL}/{endpoint}", params=params, headers=HEADERS)
         )
         response.raise_for_status()
         return response.json()
@@ -93,13 +95,7 @@ def create_alert_embed(alert, current_page, total_pages):
     severity = alert.get("severity", "N/A")
     
     # Set color based on severity
-    color = discord.Color.default()
-    if severity == "WARNING":
-        color = discord.Color.red()
-    elif severity == "WATCH":
-        color = discord.Color.orange()
-    elif severity == "TEST":
-        color = discord.Color.blue()
+    color = discord.Color(0xffffff)
 
     alert_type_code = alert.get('type', 'N/A')
     if alert_type_code in EAS_TYPES:
@@ -112,10 +108,11 @@ def create_alert_embed(alert, current_page, total_pages):
         description=alert.get("translation", "No translation available."),
         color=color
     )
+    embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
 
     footer_text = (
-        f"FIPS: {', '.join(alert.get('fipsCodes', [])) or 'N/A'} | "
-        f"Callsign: {alert.get('callsign', 'N/A').strip()}\n"
+        f"FIPS: {', '.join(alert.get('fipsCodes') or []) or 'N/A'} | "
+        f"Callsign: {(alert.get('callsign') or 'N/A').strip()}\n"
         f"Start: {alert.get('startTime', 'N/A')} | End: {alert.get('endTime', 'N/A')}"
     )
     embed.set_footer(text=footer_text)
@@ -212,7 +209,97 @@ async def handle_alert_command(ctx, alerts):
     initial_embed = create_alert_embed(alerts[0], 1, len(alerts))
     await ctx.send(embed=initial_embed, view=paginator)
 
+# --- Background Tasks ---
+SENT_ALERTS_FILE = "sent_alerts.txt"
+
+def cleanup_sent_alerts():
+    if os.path.exists(SENT_ALERTS_FILE):
+        try:
+            os.remove(SENT_ALERTS_FILE)
+        except OSError:
+            pass
+
+atexit.register(cleanup_sent_alerts)
+
+# Load existing alerts if file exists (e.g. from crash)
+sent_alert_ids = set()
+if os.path.exists(SENT_ALERTS_FILE):
+    with open(SENT_ALERTS_FILE, "r") as f:
+        sent_alert_ids = set(line.strip() for line in f if line.strip())
+
+@tasks.loop(minutes=3)
+async def check_alerts():
+    """Checks for active alerts every 3 minutes and posts new ones."""
+    if not settings.CHANNEL_ID or not str(settings.CHANNEL_ID).isdigit():
+        print("Error: CHANNEL_ID is missing or invalid in .env")
+        return
+
+    channel = bot.get_channel(int(settings.CHANNEL_ID))
+    if not channel:
+        print(f"Warning: Channel with ID {settings.CHANNEL_ID} not found.")
+        return
+
+    print("Fetching active alerts...")
+    alerts = await fetch_alerts("active")
+    if not alerts:
+        print("No active alerts found.")
+        return
+
+    for alert in alerts:
+        alert_id = str(alert.get("id"))
+        if alert_id not in sent_alert_ids:
+            print(f"New alert detected: {alert_id}. Sending...")
+            embed = create_alert_embed(alert, 1, 1)
+            
+            content = ""
+            if settings.ROLE_ID and str(settings.ROLE_ID).strip().isdigit():
+                content = f"<@&{settings.ROLE_ID.strip()}>"
+
+            # Handle Audio
+            audio_url = alert.get("audioUrl")
+            file = None
+            temp_filename = f"temp_audio_{alert_id}.mp3"
+            
+            if audio_url:
+                try:
+                    loop = bot.loop
+                    response = await loop.run_in_executor(None, lambda: requests.get(audio_url))
+                    if response.status_code == 200:
+                        with open(temp_filename, 'wb') as f:
+                            f.write(response.content)
+                        file = discord.File(temp_filename)
+                except Exception as e:
+                    print(f"Failed to download audio for alert {alert_id}: {e}")
+
+            try:
+                await channel.send(content=content, embed=embed, file=file)
+                
+                sent_alert_ids.add(alert_id)
+                with open(SENT_ALERTS_FILE, "a") as f:
+                    f.write(f"{alert_id}\n")
+                print(f"Alert {alert_id} sent successfully.")
+            except Exception as e:
+                print(f"Failed to send alert {alert_id}: {e}")
+            finally:
+                if file:
+                    file.close()
+                if os.path.exists(temp_filename):
+                    os.remove(temp_filename)
+
 # --- Bot Commands ---
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user.name} (ID: {bot.user.id})')
+    
+    if settings.ROLE_ID and str(settings.ROLE_ID).strip().isdigit():
+        print(f"Role Ping Enabled: {settings.ROLE_ID}")
+    else:
+        print("Role Ping Disabled: ROLE_ID is missing or invalid.")
+
+    if not check_alerts.is_running():
+        check_alerts.start()
+    print('------')
+
 @bot.command(name="active")
 async def active_alerts(ctx):
     """Displays active CAR alerts."""
