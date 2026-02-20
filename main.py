@@ -102,10 +102,13 @@ def create_alert_embed(alert, current_page, total_pages):
         color = discord.Color.blue()
 
     alert_type_code = alert.get('type', 'N/A')
-    alert_type_full = EAS_TYPES.get(alert_type_code, alert_type_code)
+    if alert_type_code in EAS_TYPES:
+        alert_display = f"{alert_type_code} ({EAS_TYPES[alert_type_code]})"
+    else:
+        alert_display = alert_type_code
 
     embed = discord.Embed(
-        title=f"Alert: {alert_type_full} ({severity}) [{current_page}/{total_pages}]",
+        title=f"Alert: {alert_display} ({severity}) [{current_page}/{total_pages}]",
         description=alert.get("translation", "No translation available."),
         color=color
     )
@@ -139,24 +142,19 @@ class AlertPaginator(discord.ui.View):
             self.audio_message = None
 
         self.children[0].disabled = self.current_page == 0
-        self.children[1].disabled = self.current_page >= self.total_pages - 1
+        # Previous is at index 0, Next is at index 2
+        self.children[2].disabled = self.current_page >= self.total_pages - 1
         
         embed = create_alert_embed(self.alerts[self.current_page], self.current_page + 1, self.total_pages)
         await interaction.response.edit_message(embed=embed, view=self)
 
-    @discord.ui.button(label="Previous", style=discord.ButtonStyle.grey, disabled=True)
+    @discord.ui.button(emoji="◀️", style=discord.ButtonStyle.grey, disabled=True)
     async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.current_page > 0:
             self.current_page -= 1
             await self.update_message(interaction)
 
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.grey)
-    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.current_page < self.total_pages - 1:
-            self.current_page += 1
-            await self.update_message(interaction)
-
-    @discord.ui.button(label="EAS Audio", style=discord.ButtonStyle.green, row=1)
+    @discord.ui.button(label="EAS Audio", style=discord.ButtonStyle.green)
     async def audio_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         alert = self.alerts[self.current_page]
         audio_url = alert.get("audioUrl")
@@ -193,6 +191,12 @@ class AlertPaginator(discord.ui.View):
             if os.path.exists(filename):
                 os.remove(filename)
 
+    @discord.ui.button(emoji="▶️", style=discord.ButtonStyle.grey)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_page < self.total_pages - 1:
+            self.current_page += 1
+            await self.update_message(interaction)
+
 # --- Generic Command Handler ---
 async def handle_alert_command(ctx, alerts):
     """Generic handler for sending paginated alerts."""
@@ -202,7 +206,8 @@ async def handle_alert_command(ctx, alerts):
 
     paginator = AlertPaginator(alerts)
     if len(alerts) <= 1:
-        paginator.children[1].disabled = True
+        # Next button is at index 2
+        paginator.children[2].disabled = True
 
     initial_embed = create_alert_embed(alerts[0], 1, len(alerts))
     await ctx.send(embed=initial_embed, view=paginator)
