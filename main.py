@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import requests
 import settings
+import os
 
 # --- Bot Setup ---
 intents = discord.Intents.default()
@@ -65,9 +66,18 @@ class AlertPaginator(discord.ui.View):
         self.alerts = alerts
         self.current_page = 0
         self.total_pages = len(alerts)
+        self.audio_message = None
 
     async def update_message(self, interaction: discord.Interaction):
         """Updates the message with the new embed."""
+        # Delete previous audio message if it exists
+        if self.audio_message:
+            try:
+                await self.audio_message.delete()
+            except discord.NotFound:
+                pass
+            self.audio_message = None
+
         self.children[0].disabled = self.current_page == 0
         self.children[1].disabled = self.current_page >= self.total_pages - 1
         
@@ -85,6 +95,43 @@ class AlertPaginator(discord.ui.View):
         if self.current_page < self.total_pages - 1:
             self.current_page += 1
             await self.update_message(interaction)
+
+    @discord.ui.button(label="EAS Audio", style=discord.ButtonStyle.green, row=1)
+    async def audio_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        alert = self.alerts[self.current_page]
+        audio_url = alert.get("audioUrl")
+
+        if not audio_url:
+            await interaction.response.send_message("No audio available for this alert.", ephemeral=True)
+            return
+
+        # Clean up existing audio message if present
+        if self.audio_message:
+            try:
+                await self.audio_message.delete()
+            except discord.NotFound:
+                pass
+            self.audio_message = None
+
+        await interaction.response.defer()
+        
+        filename = f"eas_audio_{alert.get('id', 'temp')}.mp3"
+        
+        try:
+            loop = interaction.client.loop
+            response = await loop.run_in_executor(None, lambda: requests.get(audio_url))
+            
+            if response.status_code == 200:
+                with open(filename, 'wb') as f:
+                    f.write(response.content)
+                
+                file = discord.File(filename)
+                self.audio_message = await interaction.followup.send(file=file)
+            else:
+                await interaction.followup.send("Failed to download audio.", ephemeral=True)
+        finally:
+            if os.path.exists(filename):
+                os.remove(filename)
 
 # --- Generic Command Handler ---
 async def handle_alert_command(ctx, alerts):
