@@ -44,3 +44,4 @@ venv/
 # IDE settings
 .idea/
 .vscode/
+sent_alerts.txt
