@@ -12,6 +12,63 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # --- API Configuration ---
 BASE_URL = "https://alerts.globaleas.org/api/v1/alerts"
 
+# --- EAS Type Mapping ---
+EAS_TYPES = {
+    "ADR": "Administrative Message",
+    "AVA": "Avalanche Watch",
+    "AVW": "Avalanche Warning",
+    "BLU": "Blue Alert",
+    "BZW": "Blizzard Warning",
+    "CAE": "Child Abduction Emergency",
+    "CDW": "Civil Danger Warning",
+    "CEM": "Civil Emergency Message",
+    "CFA": "Coastal Flood Watch",
+    "CFW": "Coastal Flood Warning",
+    "DMO": "Practice/Demo Warning",
+    "DSW": "Dust Storm Warning",
+    "EAN": "Emergency Action Notification",
+    "EAT": "Emergency Action Termination",
+    "EQW": "Earthquake Warning",
+    "EVI": "Evacuation Immediate",
+    "FFA": "Flash Flood Watch",
+    "FFW": "Flash Flood Warning",
+    "FLA": "Flood Watch",
+    "FLW": "Flood Warning",
+    "FRW": "Fire Warning",
+    "FSW": "Flash Freeze Warning",
+    "FZW": "Freeze Warning",
+    "HLS": "Hurricane Local Statement",
+    "HMW": "Hazardous Materials Warning",
+    "HUA": "Hurricane Watch",
+    "HUW": "Hurricane Warning",
+    "HWA": "High Wind Watch",
+    "HWW": "High Wind Warning",
+    "LAE": "Local Area Emergency",
+    "LEW": "Law Enforcement Warning",
+    "NAT": "National Audible Test",
+    "NIC": "National Information Center",
+    "NPT": "National Periodic Test",
+    "NUW": "Nuclear Power Plant Warning",
+    "RHW": "Radiological Hazard Warning",
+    "RMT": "Required Monthly Test",
+    "RWT": "Required Weekly Test",
+    "SMW": "Special Marine Warning",
+    "SPS": "Special Weather Statement",
+    "SPW": "Shelter In Place Warning",
+    "SVA": "Severe Thunderstorm Watch",
+    "SVR": "Severe Thunderstorm Warning",
+    "TOA": "Tornado Watch",
+    "TOE": "911 Telephone Outage Emergency",
+    "TOR": "Tornado Warning",
+    "TRA": "Tropical Storm Watch",
+    "TRW": "Tropical Storm Warning",
+    "TSA": "Tsunami Watch",
+    "TSW": "Tsunami Warning",
+    "VOW": "Volcano Warning",
+    "WSA": "Winter Storm Watch",
+    "WSW": "Winter Storm Warning"
+}
+
 # --- Helper function for API calls ---
 async def fetch_alerts(endpoint, params=None):
     """Fetches alerts from a given API endpoint asynchronously."""
@@ -44,8 +101,11 @@ def create_alert_embed(alert, current_page, total_pages):
     elif severity == "TEST":
         color = discord.Color.blue()
 
+    alert_type_code = alert.get('type', 'N/A')
+    alert_type_full = EAS_TYPES.get(alert_type_code, alert_type_code)
+
     embed = discord.Embed(
-        title=f"Alert: {alert.get('type', 'N/A')} ({severity}) [{current_page}/{total_pages}]",
+        title=f"Alert: {alert_type_full} ({severity}) [{current_page}/{total_pages}]",
         description=alert.get("translation", "No translation available."),
         color=color
     )
