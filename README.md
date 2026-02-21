@@ -13,6 +13,9 @@ this follows the GPL-3.0 license so be fair with the project
 feedback. pull requests and issues reported would be gladly appreciated!
 
 
+windows only tested. not sure about linux or mac os
+
+
 # how 2 setup the discord bot
 
 
@@ -25,8 +28,6 @@ python installed on your system.
 3. install the required libraries by running:
    ```bash
    pip install -r requirements.txt
-   # On Linux/macOS, you may need to use pip3:
-   # pip3 install -r requirements.txt
    ```
 
 ## configuration
@@ -54,8 +55,6 @@ WJON WeatherScan https://radio.wjonip.org/WJON-WSCN
 start the bot by running:
 ```bash
 python main.py
-# On Linux/macOS, you may need to use python3:
-# python3 main.py
 ```
 
 ## examples/preview
