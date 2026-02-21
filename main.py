@@ -6,6 +6,8 @@ import os
 import atexit
 import datetime
 import imageio_ffmpeg
+import shutil
+import random
 
 # --- Bot Setup ---
 intents = discord.Intents.default()
@@ -435,6 +437,16 @@ async def help_command(interaction: discord.Interaction):
     embed.set_footer(text=f"Requested by {interaction.user.display_name}")
     await interaction.response.send_message(embed=embed)
 
+    # One in a million chance for a surprise
+    if random.randint(1, 1_000_000) == 1:
+        corncat_path = settings.BASE_DIR / "corncat.png"
+        if os.path.exists(corncat_path):
+            message = "congrats, this is a GWES reference. Dear corncat has came for you. 1 in a million chance for this to happen, lucky you! - dev1"
+            await interaction.followup.send(message, file=discord.File(corncat_path))
+        else:
+            # This will only be visible to the bot owner in the console.
+            print("Special help command triggered, but corncat.png is missing.")
+
 @bot.tree.command(name="weather-radio", description="Plays a weather radio station.")
 @discord.app_commands.describe(station="The name of the station to play")
 @discord.app_commands.autocomplete(station=station_autocomplete)
@@ -473,7 +485,8 @@ async def weather_radio(interaction: discord.Interaction, station: str):
     }
     
     try:
-        source = discord.FFmpegPCMAudio(url, executable=imageio_ffmpeg.get_ffmpeg_exe(), **ffmpeg_options)
+        executable = "ffmpeg" if shutil.which("ffmpeg") else imageio_ffmpeg.get_ffmpeg_exe()
+        source = discord.FFmpegPCMAudio(url, executable=executable, **ffmpeg_options)
         transformer = discord.PCMVolumeTransformer(source, volume=0.5)
         vc.play(transformer)
         
