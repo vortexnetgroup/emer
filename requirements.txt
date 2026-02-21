@@ -1,5 +1,5 @@
 discord.py
-python-dotenv
 requests
-PyNaCl
-imageio-ffmpeg
+python-dotenv
+av
+numpy

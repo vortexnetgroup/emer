@@ -5,8 +5,7 @@ import settings
 import os
 import atexit
 import datetime
-import imageio_ffmpeg
-import shutil
+import av
 import random
 
 # --- Bot Setup ---
@@ -237,6 +236,41 @@ def load_stations():
                 if len(parts) == 2:
                     stations[parts[0].strip()] = parts[1].strip()
     return stations
+
+class PyAVSource(discord.AudioSource):
+    def __init__(self, url):
+        # Open the stream with reconnection options for stability
+        self.source = av.open(url, options={
+            'reconnect': '1',
+            'reconnect_streamed': '1',
+            'reconnect_delay_max': '5'
+        })
+        self.stream = self.source.streams.audio[0]
+        # Discord requires 48KHz, 16-bit stereo PCM
+        self.resampler = av.AudioResampler(format='s16', layout='stereo', rate=48000)
+        self.packet_iter = self.source.decode(self.stream)
+        self.buffer = bytearray()
+
+    def read(self):
+        # Discord expects 20ms of audio (3840 bytes for stereo 16-bit 48kHz)
+        required_bytes = 3840
+        
+        while len(self.buffer) < required_bytes:
+            try:
+                packet = next(self.packet_iter)
+                frames = self.resampler.resample(packet)
+                for frame in frames:
+                    self.buffer.extend(frame.to_ndarray().tobytes())
+            except (StopIteration, av.AVError):
+                # End of stream or error, return whatever is left
+                return bytes(self.buffer)
+        
+        data = bytes(self.buffer[:required_bytes])
+        del self.buffer[:required_bytes]
+        return data
+
+    def cleanup(self):
+        self.source.close()
 
 class RadioView(discord.ui.View):
     def __init__(self):
@@ -478,15 +512,9 @@ async def weather_radio(interaction: discord.Interaction, station: str):
     if vc.is_playing():
         vc.stop()
 
-    # Play stream
-    ffmpeg_options = {
-        'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-        'options': '-vn'
-    }
-    
+    # Play stream using PyAV
     try:
-        executable = "ffmpeg" if shutil.which("ffmpeg") else imageio_ffmpeg.get_ffmpeg_exe()
-        source = discord.FFmpegPCMAudio(url, executable=executable, **ffmpeg_options)
+        source = PyAVSource(url)
         transformer = discord.PCMVolumeTransformer(source, volume=0.5)
         vc.play(transformer)
         

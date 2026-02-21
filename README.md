@@ -13,9 +13,6 @@ this follows the GPL-3.0 license so be fair with the project
 feedback. pull requests and issues reported would be gladly appreciated!
 
 
-windows only tested. not sure about linux or mac os and ffmpeg for audio may not work on those two :/
-
-
 # i want to see emer in action instantly!
 join our offical emer testing server.
 https://discord.gg/MR7C6dwACP
