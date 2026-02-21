@@ -29,7 +29,15 @@ python installed on your system.
 ## installation
 1. download the source code/git clone this repository.
 2. open a terminal in the project folder.
-3. install the required libraries by running:
+3. create a virtual environment named "emer" and activate it:
+   ```bash
+   python -m venv emer
+   # Windows
+   emer\Scripts\activate
+   # Linux/macOS
+   source emer/bin/activate
+   ```
+4. install the required libraries by running:
    ```bash
    pip install -r requirements.txt
    ```
