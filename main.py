@@ -487,6 +487,149 @@ async def weather_radio(interaction: discord.Interaction, station: str):
     except Exception as e:
         await interaction.followup.send(f"Error playing station: {e}")
 
+# --- Weather Command Helpers ---
+async def get_location_from_zip(zipcode):
+    url = f"http://api.zippopotam.us/us/{zipcode}"
+    try:
+        loop = bot.loop
+        response = await loop.run_in_executor(None, lambda: requests.get(url))
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        data = response.json()
+        place = data['places'][0]
+        return {
+            "lat": place['latitude'],
+            "lon": place['longitude'],
+            "city": place['place name'],
+            "state": place['state abbreviation']
+        }
+    except Exception:
+        return None
+
+def get_weather_emoji(condition):
+    condition = condition.lower()
+    if "sunny" in condition or "clear" in condition: return "☀️"
+    if "partly cloudy" in condition: return "⛅"
+    if "cloud" in condition: return "☁️"
+    if "rain" in condition or "shower" in condition: return "🌧️"
+    if "thunder" in condition or "t-storm" in condition: return "⛈️"
+    if "snow" in condition or "flurries" in condition: return "❄️"
+    if "fog" in condition or "mist" in condition: return "🌫️"
+    if "wind" in condition: return "💨"
+    return "🌡️"
+
+@bot.tree.command(name="nwsforecast", description="Get the NWS forecast for a ZIP code.")
+@discord.app_commands.describe(zipcode="The 5-digit ZIP code")
+async def nws_forecast(interaction: discord.Interaction, zipcode: str):
+    if not zipcode.isdigit() or len(zipcode) != 5:
+        await interaction.response.send_message("Please enter a valid 5-digit ZIP code.", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+
+    # 1. Get Location Data
+    loc_data = await get_location_from_zip(zipcode)
+    if not loc_data:
+        await interaction.followup.send(f"Could not find location for ZIP code: {zipcode}")
+        return
+
+    lat, lon = loc_data['lat'], loc_data['lon']
+    city, state = loc_data['city'], loc_data['state']
+
+    # 2. Get NWS Grid Data
+    try:
+        loop = bot.loop
+        points_url = f"https://api.weather.gov/points/{lat},{lon}"
+        points_resp = await loop.run_in_executor(None, lambda: requests.get(points_url, headers=HEADERS))
+        points_resp.raise_for_status()
+        points_data = points_resp.json()
+        
+        props = points_data['properties']
+        forecast_url = props['forecast']
+        stations_url = props['observationStations']
+        
+        # 3. Fetch Forecast, Alerts, and Observations
+        # Forecast
+        forecast_resp = await loop.run_in_executor(None, lambda: requests.get(forecast_url, headers=HEADERS))
+        forecast_data = forecast_resp.json() if forecast_resp.status_code == 200 else None
+
+        # Alerts
+        alerts_url = f"https://api.weather.gov/alerts/active?point={lat},{lon}"
+        alerts_resp = await loop.run_in_executor(None, lambda: requests.get(alerts_url, headers=HEADERS))
+        alerts_data = alerts_resp.json() if alerts_resp.status_code == 200 else None
+
+        # Observations
+        obs_data = None
+        stations_resp = await loop.run_in_executor(None, lambda: requests.get(stations_url, headers=HEADERS))
+        if stations_resp.status_code == 200:
+            stations_list = stations_resp.json().get('features', [])
+            if stations_list:
+                station_id = stations_list[0]['id']
+                obs_url = f"{station_id}/observations/latest"
+                obs_resp = await loop.run_in_executor(None, lambda: requests.get(obs_url, headers=HEADERS))
+                if obs_resp.status_code == 200:
+                    obs_data = obs_resp.json()
+
+    except Exception as e:
+        await interaction.followup.send(f"Error fetching weather data: {e}")
+        return
+
+    # 4. Build Embed
+    embed = discord.Embed(title=f"Weather for {city}, {state} ({zipcode})", color=discord.Color(0x3498db))
+    embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
+
+    # Current Conditions
+    if obs_data:
+        props = obs_data.get('properties', {})
+        temp_c = props.get('temperature', {}).get('value')
+        temp_f = (temp_c * 9/5) + 32 if temp_c is not None else None
+        weather_desc = props.get('textDescription', 'Unknown')
+        humidity = props.get('relativeHumidity', {}).get('value')
+        wind_speed = props.get('windSpeed', {}).get('value')
+        wind_mph = (wind_speed * 0.621371) if wind_speed is not None else 0
+        
+        emoji = get_weather_emoji(weather_desc)
+        
+        obs_str = f"{emoji} **{weather_desc}**\n"
+        if temp_f is not None:
+            obs_str += f"🌡️ **Temp:** {int(temp_f)}°F ({int(temp_c)}°C)\n"
+        if humidity is not None:
+            obs_str += f"💧 **Humidity:** {int(humidity)}%\n"
+        if wind_mph is not None:
+            obs_str += f"💨 **Wind:** {int(wind_mph)} mph"
+            
+        embed.add_field(name="Current Conditions", value=obs_str, inline=False)
+
+    # Alerts
+    if alerts_data and alerts_data.get('features'):
+        alert_lines = []
+        for feature in alerts_data['features'][:5]: # Limit to 5
+            props = feature['properties']
+            event = props['event']
+            severity = props['severity']
+            emoji = "⚠️" if severity in ["Severe", "Extreme"] else "📢"
+            alert_lines.append(f"{emoji} **{event}**")
+        
+        if alert_lines:
+            embed.add_field(name="🚨 Active Alerts", value="\n".join(alert_lines), inline=False)
+    else:
+        embed.add_field(name="🚨 Active Alerts", value="No active alerts.", inline=False)
+
+    # Forecast
+    if forecast_data:
+        periods = forecast_data['properties']['periods'][:3] # Next 3 periods
+        for period in periods:
+            name = period['name']
+            temp = period['temperature']
+            unit = period['temperatureUnit']
+            desc = period['shortForecast']
+            emoji = get_weather_emoji(desc)
+            embed.add_field(name=f"{name}", value=f"{emoji} {desc}, {temp}°{unit}", inline=True)
+
+    embed.set_footer(text="Data provided by National Weather Service")
+    await interaction.followup.send(embed=embed)
+
 # --- Run Bot ---
 if __name__ == "__main__":
     if not settings.DISCORD_TOKEN or settings.DISCORD_TOKEN == "YOUR_BOT_TOKEN_HERE":
