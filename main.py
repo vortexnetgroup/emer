@@ -4,6 +4,8 @@ import requests
 import settings
 import os
 import atexit
+import datetime
+import imageio_ffmpeg
 
 # --- Bot Setup ---
 intents = discord.Intents.default()
@@ -221,6 +223,73 @@ async def handle_alert_command(interaction: discord.Interaction, alerts):
     initial_embed = create_alert_embed(alerts[0], 1, len(alerts))
     await interaction.followup.send(embed=initial_embed, view=paginator)
 
+# --- Radio Functionality ---
+def load_stations():
+    stations = {}
+    if os.path.exists("stations.txt"):
+        with open("stations.txt", "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip(): continue
+                parts = line.strip().rsplit(" ", 1)
+                if len(parts) == 2:
+                    stations[parts[0].strip()] = parts[1].strip()
+    return stations
+
+class RadioView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Stop", style=discord.ButtonStyle.red)
+    async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        vc = interaction.guild.voice_client
+        if vc:
+            await vc.disconnect()
+            await interaction.response.send_message("Stopped playback and disconnected.", ephemeral=True)
+        else:
+            await interaction.response.send_message("Not connected to a voice channel.", ephemeral=True)
+
+    @discord.ui.button(label="Vol +", style=discord.ButtonStyle.blurple)
+    async def vol_up(self, interaction: discord.Interaction, button: discord.ui.Button):
+        vc = interaction.guild.voice_client
+        if vc and vc.source and isinstance(vc.source, discord.PCMVolumeTransformer):
+            new_vol = min(vc.source.volume + 0.1, 2.0)
+            vc.source.volume = new_vol
+            await interaction.response.send_message(f"Volume increased to {int(new_vol * 100)}%", ephemeral=True)
+        else:
+            await interaction.response.send_message("Cannot adjust volume (not playing or invalid source).", ephemeral=True)
+
+    @discord.ui.button(label="Vol -", style=discord.ButtonStyle.blurple)
+    async def vol_down(self, interaction: discord.Interaction, button: discord.ui.Button):
+        vc = interaction.guild.voice_client
+        if vc and vc.source and isinstance(vc.source, discord.PCMVolumeTransformer):
+            new_vol = max(vc.source.volume - 0.1, 0.0)
+            vc.source.volume = new_vol
+            await interaction.response.send_message(f"Volume decreased to {int(new_vol * 100)}%", ephemeral=True)
+        else:
+            await interaction.response.send_message("Cannot adjust volume (not playing or invalid source).", ephemeral=True)
+
+    @discord.ui.button(label="Station List", style=discord.ButtonStyle.grey)
+    async def station_list(self, interaction: discord.Interaction, button: discord.ui.Button):
+        stations = load_stations()
+        if not stations:
+            await interaction.response.send_message("No stations found in stations.txt.", ephemeral=True)
+            return
+        
+        desc = "\n".join([f"• {name}" for name in stations.keys()])
+        if len(desc) > 4000:
+            desc = desc[:4000] + "..."
+            
+        embed = discord.Embed(title="Available Stations", description=desc, color=discord.Color(0xffffff))
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+async def station_autocomplete(interaction: discord.Interaction, current: str) -> list[discord.app_commands.Choice[str]]:
+    stations = load_stations()
+    return [
+        discord.app_commands.Choice(name=name, value=name)
+        for name in stations.keys()
+        if current.lower() in name.lower()
+    ][:25]
+
 # --- Background Tasks ---
 SENT_ALERTS_FILE = "sent_alerts.txt"
 
@@ -238,6 +307,17 @@ sent_alert_ids = set()
 if os.path.exists(SENT_ALERTS_FILE):
     with open(SENT_ALERTS_FILE, "r") as f:
         sent_alert_ids = set(line.strip() for line in f if line.strip())
+
+# Get local timezone for scheduling
+local_tz = datetime.datetime.now().astimezone().tzinfo
+
+@tasks.loop(time=datetime.time(hour=13, minute=0, tzinfo=local_tz))
+async def clear_sent_alerts_task():
+    """Clears the sent alerts cache and file at 1 PM machine time."""
+    sent_alert_ids.clear()
+    if os.path.exists(SENT_ALERTS_FILE):
+        open(SENT_ALERTS_FILE, 'w').close()
+    print(f"Cleared sent alerts cache and file at {datetime.datetime.now()}.")
 
 @tasks.loop(minutes=3)
 async def check_alerts():
@@ -315,6 +395,8 @@ async def on_ready():
 
     if not check_alerts.is_running():
         check_alerts.start()
+    if not clear_sent_alerts_task.is_running():
+        clear_sent_alerts_task.start()
     print('------')
 
 @bot.tree.command(name="active", description="Displays active CAR alerts.")
@@ -351,6 +433,59 @@ async def help_command(interaction: discord.Interaction):
     
     embed.set_footer(text=f"Requested by {interaction.user.display_name}")
     await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="weather-radio", description="Plays a weather radio station.")
+@discord.app_commands.describe(station="The name of the station to play")
+@discord.app_commands.autocomplete(station=station_autocomplete)
+async def weather_radio(interaction: discord.Interaction, station: str):
+    if not interaction.user.voice:
+        await interaction.response.send_message("You must be in a voice channel to use this command.", ephemeral=True)
+        return
+
+    stations = load_stations()
+    url = stations.get(station)
+    
+    if not url:
+        await interaction.response.send_message(f"Station '{station}' not found.", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+
+    # Connect to voice
+    channel = interaction.user.voice.channel
+    vc = interaction.guild.voice_client
+    
+    if vc and vc.is_connected():
+        if vc.channel != channel:
+            await vc.move_to(channel)
+    else:
+        vc = await channel.connect()
+
+    # Stop existing playback
+    if vc.is_playing():
+        vc.stop()
+
+    # Play stream
+    ffmpeg_options = {
+        'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+        'options': '-vn'
+    }
+    
+    try:
+        source = discord.FFmpegPCMAudio(url, executable=imageio_ffmpeg.get_ffmpeg_exe(), **ffmpeg_options)
+        transformer = discord.PCMVolumeTransformer(source, volume=0.5)
+        vc.play(transformer)
+        
+        embed = discord.Embed(
+            title="Weather Radio",
+            description=f"Now playing: **{station}**\nConnected to: {channel.mention}",
+            color=discord.Color(0xffffff)
+        )
+        embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
+        
+        await interaction.followup.send(embed=embed, view=RadioView())
+    except Exception as e:
+        await interaction.followup.send(f"Error playing station: {e}")
 
 # --- Run Bot ---
 if __name__ == "__main__":

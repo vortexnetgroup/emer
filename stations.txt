@@ -1,0 +1,8 @@
+WJON IP https://radio.wjonip.org/wjonip
+WJON WeatherScan https://radio.wjonip.org/WJON-WSCN
+WJON TV https://radio.wjonip.org/WJONTV
+KWO35 NY https://broadcastify.cdnstream1.com/25412
+WXJ37 NM Farmington https://radio.weatherusa.net/NWR/WXJ37.mp3 
+KHB60 WA Seattle https://wxradio.bobc.io/stream/KHB60
+KEC56 TX Dallas https://wxradio.org/TX-Dallas-KEC56 
+WXL34 NY Albany https://wxradio.org/NY-Albany-WXL34 
