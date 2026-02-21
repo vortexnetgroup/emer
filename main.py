@@ -8,7 +8,7 @@ import atexit
 # --- Bot Setup ---
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 # --- API Configuration ---
 BASE_URL = "https://alerts.globaleas.org/api/v1/alerts"
@@ -112,7 +112,7 @@ def create_alert_embed(alert, current_page, total_pages):
 
     footer_text = (
         f"FIPS: {', '.join(alert.get('fipsCodes') or []) or 'N/A'} | "
-        f"Callsign: {(alert.get('callsign') or 'N/A').strip()}\n"
+        f"Issued by/Callsign: {(alert.get('callsign') or 'N/A').strip()}\n"
         f"Start: {alert.get('startTime', 'N/A')} | End: {alert.get('endTime', 'N/A')}"
     )
     embed.set_footer(text=footer_text)
@@ -121,12 +121,19 @@ def create_alert_embed(alert, current_page, total_pages):
 
 class AlertPaginator(discord.ui.View):
     """A view for paginating through a list of alerts with buttons."""
-    def __init__(self, alerts):
+    def __init__(self, alerts, author):
         super().__init__(timeout=180) # View times out after 3 minutes
         self.alerts = alerts
+        self.author = author
         self.current_page = 0
         self.total_pages = len(alerts)
         self.audio_message = None
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user != self.author:
+            await interaction.response.send_message("You cannot control this pagination view.", ephemeral=True)
+            return False
+        return True
 
     async def update_message(self, interaction: discord.Interaction):
         """Updates the message with the new embed."""
@@ -201,7 +208,7 @@ async def handle_alert_command(ctx, alerts):
         await ctx.send("No alerts found.")
         return
 
-    paginator = AlertPaginator(alerts)
+    paginator = AlertPaginator(alerts, ctx.author)
     if len(alerts) <= 1:
         # Next button is at index 2
         paginator.children[2].disabled = True
@@ -241,6 +248,11 @@ async def check_alerts():
 
     print("Fetching active alerts...")
     alerts = await fetch_alerts("active")
+
+    if alerts is not None:
+        count = len(alerts)
+        await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=f"{count} active alerts"))
+
     if not alerts:
         print("No active alerts found.")
         return
@@ -321,6 +333,24 @@ async def search_alerts_cmd(ctx, *, query: str):
         params = {"query": query, "page": 0}
         alerts = await fetch_alerts("search", params=params)
         await handle_alert_command(ctx, alerts)
+
+@bot.command(name="help")
+async def help_command(ctx):
+    """Displays the help menu."""
+    embed = discord.Embed(
+        title="Emer Bot Help",
+        description="List of available commands:",
+        color=discord.Color(0xffffff)
+    )
+    embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
+    
+    embed.add_field(name="!active", value="Displays currently active CAR alerts.", inline=False)
+    embed.add_field(name="!all", value="Displays all recent CAR alerts.", inline=False)
+    embed.add_field(name="!search <query>", value="Searches for alerts matching the query.", inline=False)
+    embed.add_field(name="!help", value="Displays this help message.", inline=False)
+    
+    embed.set_footer(text=f"Requested by {ctx.author.display_name}")
+    await ctx.send(embed=embed)
 
 # --- Run Bot ---
 if __name__ == "__main__":
