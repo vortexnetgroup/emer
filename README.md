@@ -89,10 +89,3 @@ NWS forecast example:
 
 
 and many more!
-
-## troubleshooting
-### ffmpeg error -9 on macos
-if you encounter an error related to ffmpeg exiting with code -9 on macos:
-1. install homebrew (https://brew.sh).
-2. run `brew install ffmpeg` in your terminal.
-the bot will automatically detect and use the system ffmpeg.

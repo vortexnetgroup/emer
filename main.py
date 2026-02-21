@@ -6,7 +6,6 @@ import os
 import atexit
 import datetime
 import imageio_ffmpeg
-import shutil
 
 # --- Bot Setup ---
 intents = discord.Intents.default()
@@ -474,8 +473,7 @@ async def weather_radio(interaction: discord.Interaction, station: str):
     }
     
     try:
-        executable = "ffmpeg" if shutil.which("ffmpeg") else imageio_ffmpeg.get_ffmpeg_exe()
-        source = discord.FFmpegPCMAudio(url, executable=executable, **ffmpeg_options)
+        source = discord.FFmpegPCMAudio(url, executable=imageio_ffmpeg.get_ffmpeg_exe(), **ffmpeg_options)
         transformer = discord.PCMVolumeTransformer(source, volume=0.5)
         vc.play(transformer)
         
