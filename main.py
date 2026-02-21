@@ -8,7 +8,12 @@ import atexit
 # --- Bot Setup ---
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+
+class EmerBot(commands.Bot):
+    async def setup_hook(self):
+        await self.tree.sync()
+
+bot = EmerBot(command_prefix="!", intents=intents, help_command=None)
 
 # --- API Configuration ---
 BASE_URL = "https://alerts.globaleas.org/api/v1/alerts"
@@ -202,19 +207,19 @@ class AlertPaginator(discord.ui.View):
             await self.update_message(interaction)
 
 # --- Generic Command Handler ---
-async def handle_alert_command(ctx, alerts):
+async def handle_alert_command(interaction: discord.Interaction, alerts):
     """Generic handler for sending paginated alerts."""
     if not alerts:
-        await ctx.send("No alerts found.")
+        await interaction.followup.send("No alerts found.")
         return
 
-    paginator = AlertPaginator(alerts, ctx.author)
+    paginator = AlertPaginator(alerts, interaction.user)
     if len(alerts) <= 1:
         # Next button is at index 2
         paginator.children[2].disabled = True
 
     initial_embed = create_alert_embed(alerts[0], 1, len(alerts))
-    await ctx.send(embed=initial_embed, view=paginator)
+    await interaction.followup.send(embed=initial_embed, view=paginator)
 
 # --- Background Tasks ---
 SENT_ALERTS_FILE = "sent_alerts.txt"
@@ -312,31 +317,27 @@ async def on_ready():
         check_alerts.start()
     print('------')
 
-@bot.command(name="active")
-async def active_alerts(ctx):
-    """Displays active CAR alerts."""
-    async with ctx.typing():
-        alerts = await fetch_alerts("active")
-        await handle_alert_command(ctx, alerts)
+@bot.tree.command(name="active", description="Displays active CAR alerts.")
+async def active_alerts(interaction: discord.Interaction):
+    await interaction.response.defer()
+    alerts = await fetch_alerts("active")
+    await handle_alert_command(interaction, alerts)
 
-@bot.command(name="all")
-async def all_alerts(ctx):
-    """Displays all recent CAR alerts."""
-    async with ctx.typing():
-        alerts = await fetch_alerts("all")
-        await handle_alert_command(ctx, alerts)
+@bot.tree.command(name="all", description="Displays all recent CAR alerts.")
+async def all_alerts(interaction: discord.Interaction):
+    await interaction.response.defer()
+    alerts = await fetch_alerts("all")
+    await handle_alert_command(interaction, alerts)
 
-@bot.command(name="search")
-async def search_alerts_cmd(ctx, *, query: str):
-    """Searches for CAR alerts with a given query."""
-    async with ctx.typing():
-        params = {"query": query, "page": 0}
-        alerts = await fetch_alerts("search", params=params)
-        await handle_alert_command(ctx, alerts)
+@bot.tree.command(name="search", description="Searches for CAR alerts with a given query.")
+async def search_alerts_cmd(interaction: discord.Interaction, query: str):
+    await interaction.response.defer()
+    params = {"query": query, "page": 0}
+    alerts = await fetch_alerts("search", params=params)
+    await handle_alert_command(interaction, alerts)
 
-@bot.command(name="help")
-async def help_command(ctx):
-    """Displays the help menu."""
+@bot.tree.command(name="help", description="Displays the help menu.")
+async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
         title="Emer Bot Help",
         description="List of available commands:",
@@ -344,13 +345,12 @@ async def help_command(ctx):
     )
     embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
     
-    embed.add_field(name="!active", value="Displays currently active CAR alerts.", inline=False)
-    embed.add_field(name="!all", value="Displays all recent CAR alerts.", inline=False)
-    embed.add_field(name="!search <query>", value="Searches for alerts matching the query.", inline=False)
-    embed.add_field(name="!help", value="Displays this help message.", inline=False)
+    # Dynamically list commands from the tree
+    for command in bot.tree.get_commands():
+        embed.add_field(name=f"/{command.name}", value=command.description, inline=False)
     
-    embed.set_footer(text=f"Requested by {ctx.author.display_name}")
-    await ctx.send(embed=embed)
+    embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+    await interaction.response.send_message(embed=embed)
 
 # --- Run Bot ---
 if __name__ == "__main__":
