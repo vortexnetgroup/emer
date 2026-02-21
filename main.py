@@ -184,7 +184,7 @@ class AlertPaginator(discord.ui.View):
 
         await interaction.response.defer()
         
-        filename = f"eas_audio_{alert.get('id', 'temp')}.mp3"
+        filename = settings.BASE_DIR / f"eas_audio_{alert.get('id', 'temp')}.mp3"
         
         try:
             loop = interaction.client.loop
@@ -226,8 +226,9 @@ async def handle_alert_command(interaction: discord.Interaction, alerts):
 # --- Radio Functionality ---
 def load_stations():
     stations = {}
-    if os.path.exists("stations.txt"):
-        with open("stations.txt", "r", encoding="utf-8") as f:
+    stations_file = settings.BASE_DIR / "stations.txt"
+    if os.path.exists(stations_file):
+        with open(stations_file, "r", encoding="utf-8") as f:
             for line in f:
                 if not line.strip(): continue
                 parts = line.strip().rsplit(" ", 1)
@@ -291,7 +292,7 @@ async def station_autocomplete(interaction: discord.Interaction, current: str) -
     ][:25]
 
 # --- Background Tasks ---
-SENT_ALERTS_FILE = "sent_alerts.txt"
+SENT_ALERTS_FILE = settings.BASE_DIR / "sent_alerts.txt"
 
 def cleanup_sent_alerts():
     if os.path.exists(SENT_ALERTS_FILE):
@@ -355,7 +356,7 @@ async def check_alerts():
             # Handle Audio
             audio_url = alert.get("audioUrl")
             file = None
-            temp_filename = f"temp_audio_{alert_id}.mp3"
+            temp_filename = settings.BASE_DIR / f"temp_audio_{alert_id}.mp3"
             
             if audio_url:
                 try:
