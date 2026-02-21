@@ -35,6 +35,7 @@ python installed on your system.
 5. paste your server id in `SERVER_ID`.
 6. paste the channel id where you want alerts to go in `CHANNEL_ID`.
 7. paste a role id in `ROLE_ID` if you want pings, or leave it blank.
+8. make sure all intents in the bot tab are enabled
 
 ## custom stations setup.
 to add radio stations, edit the `stations.txt` file.
