@@ -13,7 +13,7 @@ this follows the GPL-3.0 license so be fair with the project
 feedback. pull requests and issues reported would be gladly appreciated!
 
 
-windows only tested. not sure about linux or mac os
+windows only tested. not sure about linux or mac os and ffmpeg for audio may not work on those two :/
 
 
 # how 2 setup the discord bot
