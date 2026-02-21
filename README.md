@@ -52,3 +52,28 @@ start the bot by running:
 ```bash
 python main.py
 ```
+
+## examples/preview
+EAS tracker example:
+<img width="615" height="330" alt="image" src="https://github.com/user-attachments/assets/0138b1ca-17e9-41e3-a2ea-755287e18e9e" />
+
+search query example for tornado:
+<img width="615" height="457" alt="image" src="https://github.com/user-attachments/assets/8429b0ae-be22-47e7-a860-22fd049af58e" />
+
+anti-troll:
+<img width="617" height="369" alt="image" src="https://github.com/user-attachments/assets/5c6f1d0a-1efc-4a4f-ad54-fd57a8aa5614" />
+
+active example:
+<img width="663" height="255" alt="image" src="https://github.com/user-attachments/assets/a15f6fb5-0105-4816-a848-210b379af077" />
+
+station list example:
+<img width="1053" height="304" alt="image" src="https://github.com/user-attachments/assets/02f677ec-c118-46ad-9d5e-66410df9ea30" />
+
+weather radio control example:
+<img width="476" height="203" alt="image" src="https://github.com/user-attachments/assets/9e44d6e4-f23b-44d7-bbd3-d27e71b6d32f" />
+
+NWS forecast example:
+<img width="638" height="345" alt="image" src="https://github.com/user-attachments/assets/3e842a34-314c-45f7-b227-f883adf7a34e" />
+
+
+and many more!
