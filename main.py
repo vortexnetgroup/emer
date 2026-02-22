@@ -7,6 +7,10 @@ import atexit
 import datetime
 import av
 import random
+import asyncio
+import json
+import re
+import html
 
 # --- Bot Setup ---
 intents = discord.Intents.default()
@@ -17,6 +21,9 @@ class EmerBot(commands.Bot):
         await self.tree.sync()
 
 bot = EmerBot(command_prefix="!", intents=intents, help_command=None)
+
+# Store active radio controller messages: {guild_id: message}
+active_radio_controllers = {}
 
 # --- API Configuration ---
 BASE_URL = "https://alerts.globaleas.org/api/v1/alerts"
@@ -79,6 +86,182 @@ EAS_TYPES = {
     "WSW": "Winter Storm Warning"
 }
 
+# --- IEMBot Rooms ---
+IEMBOT_ROOMS = {
+    "botstalk": "All Bots Talk",
+    "nhcchat": "National Hurricane Center (NHC)",
+    "spcchat": "Storm Prediction Center (SPC)",
+    "cpcchat": "Climate Prediction Center (CPC)",
+    "wpcchat": "Weather Prediction Center (WPC)",
+    "wbcchat": "Weather Bureau Central / NWSHQ (WBC)",
+    "dmgchat": "Damage Assessment PNS",
+    "pdschat": "Particularly Dangerous Situation PDS",
+    "emergchat": "Tornado/FF Emergencies",
+    "abqchat": "Albuquerque",
+    "abrchat": "Aberdeen",
+    "afcchat": "Anchorage",
+    "afgchat": "Fairbanks",
+    "ajkchat": "Juneau",
+    "akqchat": "Wakefield",
+    "alychat": "Albany",
+    "amachat": "Amarillo",
+    "apxchat": "Gaylord",
+    "arxchat": "La Crosse",
+    "bgmchat": "Binghamton",
+    "bischat": "Bismarck",
+    "bmxchat": "Birmingham",
+    "boichat": "Boise",
+    "bouchat": "Denver",
+    "boxchat": "Boston/Taunton",
+    "brochat": "Brownsville",
+    "btvchat": "Burlington",
+    "bufchat": "Buffalo",
+    "byzchat": "Billings",
+    "caechat": "Columbia",
+    "carchat": "Caribou",
+    "chschat": "Charleston",
+    "clechat": "Cleveland",
+    "crpchat": "Corpus Christi",
+    "ctpchat": "State College",
+    "cyschat": "Cheyenne",
+    "ddcchat": "Dodge City",
+    "dlhchat": "Duluth",
+    "dmxchat": "Des Moines",
+    "dtxchat": "Detroit",
+    "dvnchat": "Quad Cities Ia",
+    "eaxchat": "Kansas City/Pleasant Hill",
+    "ekachat": "Eureka",
+    "epzchat": "El Paso Tx/Santa Teresa",
+    "ewxchat": "Austin/San Antonio",
+    "ffcchat": "Peachtree City",
+    "fgfchat": "Grand Forks",
+    "fgzchat": "Flagstaff",
+    "fsdchat": "Sioux Falls",
+    "fwdchat": "Dallas/Fort Worth",
+    "ggwchat": "Glasgow",
+    "gidchat": "Hastings",
+    "gjtchat": "Grand Junction",
+    "gldchat": "Goodland",
+    "grbchat": "Green Bay",
+    "grrchat": "Grand Rapids",
+    "gspchat": "Greenville/Spartanburg",
+    "gumchat": "Guam",
+    "gyxchat": "Gray",
+    "hawaii": "Hawaii",
+    "hfochat": "Honolulu",
+    "hgxchat": "Houston/Galveston",
+    "hnxchat": "San Joaquin Valley/Hanford",
+    "hunchat": "Huntsville",
+    "ictchat": "Wichita",
+    "ilmchat": "Wilmington",
+    "ilnchat": "Wilmington",
+    "ilxchat": "Lincoln",
+    "indchat": "Indianapolis",
+    "iwxchat": "Northern Indiana",
+    "janchat": "Jackson",
+    "jaxchat": "Jacksonville",
+    "jklchat": "Jackson",
+    "jsjchat": "San Juan",
+    "keychat": "Key West",
+    "lbfchat": "North Platte",
+    "lchchat": "Lake Charles",
+    "lixchat": "New Orleans",
+    "lknchat": "Elko",
+    "lmkchat": "Louisville",
+    "lotchat": "Chicago",
+    "loxchat": "Los Angeles/Oxnard",
+    "lsxchat": "St Louis",
+    "lubchat": "Lubbock",
+    "lwxchat": "Baltimore Md/ Washington Dc",
+    "lzkchat": "Little Rock",
+    "mafchat": "Midland/Odessa",
+    "megchat": "Memphis",
+    "mflchat": "Miami",
+    "mfrchat": "Medford",
+    "mhxchat": "Newport/Morehead City",
+    "michiganwxalerts": "Michigan Weather Alerts",
+    "mkxchat": "Milwaukee/Sullivan",
+    "mlbchat": "Melbourne",
+    "mobchat": "Mobile",
+    "mpxchat": "Twin Cities/Chanhassen",
+    "mqtchat": "Marquette",
+    "mrxchat": "Morristown",
+    "msochat": "Missoula",
+    "mtrchat": "San Francisco",
+    "oaxchat": "Omaha/Valley",
+    "ohxchat": "Nashville",
+    "okxchat": "New York",
+    "otxchat": "Spokane",
+    "ounchat": "Norman",
+    "pahchat": "Paducah",
+    "pbzchat": "Pittsburgh",
+    "pdtchat": "Pendleton",
+    "phichat": "Mount Holly",
+    "pihchat": "Pocatello/Idaho Falls",
+    "pqrchat": "Portland",
+    "psrchat": "Phoenix",
+    "pubchat": "Pueblo",
+    "rahchat": "Raleigh",
+    "revchat": "Reno",
+    "riwchat": "Riverton",
+    "rlxchat": "Charleston",
+    "rnkchat": "Blacksburg",
+    "sewchat": "Seattle",
+    "sgfchat": "Springfield",
+    "sgxchat": "San Diego",
+    "shvchat": "Shreveport",
+    "sjtchat": "San Angelo",
+    "sjuchat": "San Juan",
+    "slcchat": "Salt Lake City",
+    "stochat": "Sacramento",
+    "taechat": "Tallahassee",
+    "tbwchat": "Tampa Bay Area/Ruskin",
+    "tfxchat": "Great Falls",
+    "topchat": "Topeka",
+    "tsachat": "Tulsa",
+    "twcchat": "Tucson",
+    "unrchat": "Rapid City",
+    "vefchat": "Las Vegas",
+    "alrchat": "Atlanta RFC",
+    "fwrchat": "West Gulf RFC",
+    "krfchat": "Missouri River Basin RFC",
+    "msrchat": "North Central RFC",
+    "ornchat": "Lower Mississippi RFC",
+    "pacrchat": "Alaska - Pacific RFC",
+    "ptrchat": "Northwest RFC",
+    "rhachat": "Mid Atlantic RFC",
+    "rsachat": "California - Nevada RFC",
+    "strchat": "Colorado RFC",
+    "tarchat": "Northeast RFC",
+    "tirchat": "Ohio RFC",
+    "tuachat": "Arkansas Red River RFC",
+    "pancchat": "Anchorage",
+    "zabchat": "Albuquerque",
+    "zauchat": "Chicago",
+    "zbwchat": "Boston",
+    "zdcchat": "Washington DC",
+    "zdvchat": "Denver",
+    "zfwchat": "Fort Worth",
+    "zhnchat": "Honolulu CWSU",
+    "zhuchat": "Houston",
+    "zidchat": "Indianapolis",
+    "zjxchat": "Jacksonville",
+    "zkcchat": "Kansas City",
+    "zlachat": "Los Angeles",
+    "zlcchat": "Salt Lake City",
+    "zmachat": "Miami",
+    "zmechat": "Memphis",
+    "zmpchat": "Minneapolis",
+    "znychat": "New York",
+    "zoachat": "Oakland",
+    "zobchat": "Cleveland",
+    "zsechat": "Seattle",
+    "ztlchat": "Atlanta",
+    "n90": "N90 TRACON New York City",
+    "potomac_tracon": "Potomac TRACON Washington DC",
+    "phl": "PHL TRACON Philadephia"
+}
+
 # --- Helper function for API calls ---
 async def fetch_alerts(endpoint, params=None):
     """Fetches alerts from a given API endpoint asynchronously."""
@@ -94,6 +277,27 @@ async def fetch_alerts(endpoint, params=None):
         return response.json()
     except requests.exceptions.RequestException as e:
         print(f"API Error: {e}")
+        return None
+
+async def fetch_iembot_messages(room):
+    """Fetches messages from IEMBot for a specific room."""
+    url = f"https://weather.im/iembot-json/room/{room}?seqnum=0"
+    try:
+        loop = bot.loop
+        response = await loop.run_in_executor(None, lambda: requests.get(url))
+        response.raise_for_status()
+        
+        content = response.text
+        # Extract JSON if wrapped in HTML/XML (find first { and last })
+        if "{" in content and "}" in content:
+            start = content.find("{")
+            end = content.rfind("}") + 1
+            content = content[start:end]
+            
+        data = json.loads(content)
+        return data.get("messages", [])
+    except Exception as e:
+        print(f"IEMBot API Error: {e}")
         return None
 
 # --- Embed and View Creation ---
@@ -125,6 +329,49 @@ def create_alert_embed(alert, current_page, total_pages):
     )
     embed.set_footer(text=footer_text)
 
+    return embed
+
+def clean_iembot_message(text):
+    """Cleans HTML tags from IEMBot messages and formats for Discord."""
+    if not text:
+        return "No content"
+    
+    # Decode HTML entities
+    text = html.unescape(text)
+    
+    # Replace <br> with newlines
+    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+    
+    # Replace </p> with newlines to separate paragraphs
+    text = re.sub(r'</p>', '\n', text, flags=re.IGNORECASE)
+    
+    # Replace links: <a href="url">text</a> -> [text](url)
+    text = re.sub(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', r'[\2](\1)', text, flags=re.IGNORECASE)
+    text = re.sub(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', r'[\2](\1)', text, flags=re.IGNORECASE)
+    
+    # Replace bold: <strong>text</strong> -> **text**
+    text = re.sub(r'<(?:strong|b)>(.*?)</(?:strong|b)>', r'**\1**', text, flags=re.IGNORECASE)
+    
+    # Remove remaining tags (like <p>)
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    return text.strip()
+
+def create_iembot_embed(message, current_page, total_pages, room_code):
+    """Creates a Discord embed for an IEMBot message."""
+    room_name = IEMBOT_ROOMS.get(room_code, room_code)
+    clean_desc = clean_iembot_message(message.get("message", "No content"))
+    
+    embed = discord.Embed(
+        title=f"IEMBot: {room_name} [{current_page}/{total_pages}]",
+        description=clean_desc,
+        color=discord.Color(0x3498db)
+    )
+    embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
+    
+    footer_text = f"Time: {message.get('ts', 'N/A')} | Author: {message.get('author', 'N/A')}\nProduct ID: {message.get('product_id', 'N/A')}"
+    embed.set_footer(text=footer_text)
+    
     return embed
 
 class AlertPaginator(discord.ui.View):
@@ -209,6 +456,41 @@ class AlertPaginator(discord.ui.View):
             self.current_page += 1
             await self.update_message(interaction)
 
+class IEMBotPaginator(discord.ui.View):
+    """A view for paginating through IEMBot messages."""
+    def __init__(self, messages, author, room_code):
+        super().__init__(timeout=180)
+        self.messages = messages
+        self.author = author
+        self.room_code = room_code
+        self.current_page = 0
+        self.total_pages = len(messages)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user != self.author:
+            await interaction.response.send_message("You cannot control this pagination view.", ephemeral=True)
+            return False
+        return True
+
+    async def update_message(self, interaction: discord.Interaction):
+        self.children[0].disabled = self.current_page == 0
+        self.children[1].disabled = self.current_page >= self.total_pages - 1
+        
+        embed = create_iembot_embed(self.messages[self.current_page], self.current_page + 1, self.total_pages, self.room_code)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(emoji="◀️", style=discord.ButtonStyle.grey, disabled=True)
+    async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_page > 0:
+            self.current_page -= 1
+            await self.update_message(interaction)
+
+    @discord.ui.button(emoji="▶️", style=discord.ButtonStyle.grey)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_page < self.total_pages - 1:
+            self.current_page += 1
+            await self.update_message(interaction)
+
 # --- Generic Command Handler ---
 async def handle_alert_command(interaction: discord.Interaction, alerts):
     """Generic handler for sending paginated alerts."""
@@ -281,9 +563,18 @@ class RadioView(discord.ui.View):
         vc = interaction.guild.voice_client
         if vc:
             await vc.disconnect()
-            await interaction.response.send_message("Stopped playback and disconnected.", ephemeral=True)
-        else:
-            await interaction.response.send_message("Not connected to a voice channel.", ephemeral=True)
+            
+        if interaction.guild.id in active_radio_controllers:
+            del active_radio_controllers[interaction.guild.id]
+
+        embed = discord.Embed(description="The media has stopped.", color=discord.Color.red())
+        await interaction.response.edit_message(embed=embed, view=None)
+        
+        await asyncio.sleep(3)
+        try:
+            await interaction.message.delete()
+        except discord.NotFound:
+            pass
 
     @discord.ui.button(label="Vol +", style=discord.ButtonStyle.blurple)
     async def vol_up(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -455,6 +746,45 @@ async def search_alerts_cmd(interaction: discord.Interaction, query: str):
     alerts = await fetch_alerts("search", params=params)
     await handle_alert_command(interaction, alerts)
 
+async def iembot_autocomplete(interaction: discord.Interaction, current: str) -> list[discord.app_commands.Choice[str]]:
+    choices = []
+    for code, name in IEMBOT_ROOMS.items():
+        if current.lower() in code.lower() or current.lower() in name.lower():
+            display_name = f"[{code}] {name}"
+            choices.append(discord.app_commands.Choice(name=display_name, value=code))
+            if len(choices) >= 25:
+                break
+    return choices
+
+@bot.tree.command(name="iembot", description="Displays recent messages from an IEMBot chatroom.")
+@discord.app_commands.describe(chatroom="The chatroom to fetch messages from")
+@discord.app_commands.autocomplete(chatroom=iembot_autocomplete)
+async def iembot_command(interaction: discord.Interaction, chatroom: str):
+    await interaction.response.defer()
+    
+    messages = await fetch_iembot_messages(chatroom)
+    
+    if not messages:
+        await interaction.followup.send(f"No messages found for room '{chatroom}' or API error.")
+        return
+
+    # Get last 5 and reverse so newest is first
+    recent_messages = messages[-5:]
+    # Reverse so newest is first
+    recent_messages = messages
+    recent_messages.reverse()
+    
+    if not recent_messages:
+         await interaction.followup.send(f"No recent messages found for room '{chatroom}'.")
+         return
+
+    paginator = IEMBotPaginator(recent_messages, interaction.user, chatroom)
+    if len(recent_messages) <= 1:
+        paginator.children[1].disabled = True
+
+    initial_embed = create_iembot_embed(recent_messages[0], 1, len(recent_messages), chatroom)
+    await interaction.followup.send(embed=initial_embed, view=paginator)
+
 @bot.tree.command(name="help", description="Displays the help menu.")
 async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -525,7 +855,18 @@ async def weather_radio(interaction: discord.Interaction, station: str):
         )
         embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
         
-        await interaction.followup.send(embed=embed, view=RadioView())
+        guild_id = interaction.guild.id
+        if guild_id in active_radio_controllers:
+            try:
+                msg = active_radio_controllers[guild_id]
+                await msg.edit(embed=embed, view=RadioView())
+                await interaction.followup.send(f"Tuned to **{station}**.", ephemeral=True)
+                return
+            except (discord.NotFound, discord.HTTPException):
+                pass
+
+        msg = await interaction.followup.send(embed=embed, view=RadioView())
+        active_radio_controllers[guild_id] = msg
     except Exception as e:
         await interaction.followup.send(f"Error playing station: {e}")
 
