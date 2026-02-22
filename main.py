@@ -88,6 +88,63 @@ EAS_TYPES = {
     "WSW": "Winter Storm Warning"
 }
 
+# --- EAS Rarity Mapping ---
+EAS_RARITY = {
+    "ADR": "Common",
+    "AVA": "Uncommon",
+    "AVW": "Uncommon",
+    "BLU": "Rare",
+    "BZW": "Uncommon",
+    "CAE": "Rare",
+    "CDW": "Extremely Rare",
+    "CEM": "Rare",
+    "CFA": "Common",
+    "CFW": "Common",
+    "DMO": "Common",
+    "DSW": "Uncommon",
+    "EAN": "Extremely Rare",
+    "EAT": "Extremely Rare",
+    "EQW": "Extremely Rare",
+    "EVI": "Rare",
+    "FFA": "Common",
+    "FFW": "Common",
+    "FLA": "Common",
+    "FLW": "Common",
+    "FRW": "Rare",
+    "FSW": "Uncommon",
+    "FZW": "Common",
+    "HLS": "Common",
+    "HMW": "Rare",
+    "HUA": "Uncommon",
+    "HUW": "Uncommon",
+    "HWA": "Common",
+    "HWW": "Common",
+    "LAE": "Rare",
+    "LEW": "Rare",
+    "NAT": "Extremely Rare",
+    "NIC": "Extremely Rare",
+    "NPT": "Uncommon",
+    "NUW": "Extremely Rare",
+    "RHW": "Extremely Rare",
+    "RMT": "Common",
+    "RWT": "Common",
+    "SMW": "Common",
+    "SPS": "Common",
+    "SPW": "Rare",
+    "SVA": "Common",
+    "SVR": "Common",
+    "TOA": "Common",
+    "TOE": "Rare",
+    "TOR": "Uncommon",
+    "TRA": "Uncommon",
+    "TRW": "Uncommon",
+    "TSA": "Rare",
+    "TSW": "Rare",
+    "VOW": "Extremely Rare",
+    "WSA": "Common",
+    "WSW": "Common"
+}
+
 # --- IEMBot Rooms ---
 IEMBOT_ROOMS = {
     "botstalk": "All Bots Talk",
@@ -304,6 +361,27 @@ async def fetch_iembot_messages(room):
 
 # --- Embed and View Creation ---
 
+def format_time_to_discord(time_str):
+    """Converts an ISO 8601 time string to a Discord timestamp format."""
+    if not time_str or time_str == "N/A":
+        return "N/A"
+    try:
+        # Handle 'Z' for UTC which fromisoformat might not like on all python versions
+        if time_str.endswith('Z'):
+            dt_obj = datetime.datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+        else:
+            dt_obj = datetime.datetime.fromisoformat(time_str)
+
+        # If the datetime object is naive (no timezone), assume it's UTC.
+        if dt_obj.tzinfo is None:
+            dt_obj = dt_obj.replace(tzinfo=datetime.timezone.utc)
+            
+        timestamp = int(dt_obj.timestamp())
+        return f"<t:{timestamp}:f>"
+    except (ValueError, TypeError):
+        # Fallback to original string if parsing fails
+        return time_str
+
 def create_alert_embed(alert, current_page, total_pages):
     """Creates a Discord embed for a single alert."""
     severity = alert.get("severity", "N/A")
@@ -317,17 +395,23 @@ def create_alert_embed(alert, current_page, total_pages):
     else:
         alert_display = alert_type_code
 
+    rarity = EAS_RARITY.get(alert_type_code, "Unknown")
+
     embed = discord.Embed(
         title=f"Alert: {alert_display} ({severity}) [{current_page}/{total_pages}]",
         description=alert.get("translation", "No translation available."),
         color=color
     )
+    embed.add_field(name="Rarity", value=rarity, inline=True)
     embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
+
+    start_time_str = format_time_to_discord(alert.get('startTime', 'N/A'))
+    end_time_str = format_time_to_discord(alert.get('endTime', 'N/A'))
 
     footer_text = (
         f"FIPS: {', '.join(alert.get('fipsCodes') or []) or 'N/A'} | "
         f"Issued by/Callsign: {(alert.get('callsign') or 'N/A').strip()}\n"
-        f"Start: {alert.get('startTime', 'N/A')} | End: {alert.get('endTime', 'N/A')}"
+        f"Start: {start_time_str} | End: {end_time_str}"
     )
     embed.set_footer(text=footer_text)
 
@@ -367,7 +451,7 @@ def create_iembot_embed(message, current_page, total_pages, room_code):
     embed = discord.Embed(
         title=f"IEMBot: {room_name} [{current_page}/{total_pages}]",
         description=clean_desc,
-        color=discord.Color(0x3498db)
+        color=discord.Color(0xffffff)
     )
     embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
     
@@ -569,7 +653,7 @@ class RadioView(discord.ui.View):
         if interaction.guild.id in active_radio_controllers:
             del active_radio_controllers[interaction.guild.id]
 
-        embed = discord.Embed(description="The media has stopped.", color=discord.Color.red())
+        embed = discord.Embed(description="The media has stopped.", color=discord.Color(0xffffff))
         await interaction.response.edit_message(embed=embed, view=None)
         
         await asyncio.sleep(3)
@@ -968,7 +1052,7 @@ async def nws_forecast(interaction: discord.Interaction, zipcode: str):
         return
 
     # 4. Build Embed
-    embed = discord.Embed(title=f"Weather for {city}, {state} ({zipcode})", color=discord.Color(0x3498db))
+    embed = discord.Embed(title=f"Weather for {city}, {state} ({zipcode})", color=discord.Color(0xffffff))
     embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
 
     # Current Conditions
