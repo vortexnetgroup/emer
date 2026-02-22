@@ -649,6 +649,11 @@ async def clear_sent_alerts_task():
         open(SENT_ALERTS_FILE, 'w').close()
     print(f"Cleared sent alerts cache and file at {datetime.datetime.now()}.")
 
+@tasks.loop(time=datetime.time(hour=0, minute=0, tzinfo=local_tz))
+async def auto_update_task():
+    """Checks for updates automatically at midnight."""
+    await bot.loop.run_in_executor(None, check_for_updates)
+
 @tasks.loop(minutes=3)
 async def check_alerts():
     """Checks for active alerts every 3 minutes and posts new ones."""
@@ -727,6 +732,8 @@ async def on_ready():
         check_alerts.start()
     if not clear_sent_alerts_task.is_running():
         clear_sent_alerts_task.start()
+    if not auto_update_task.is_running():
+        auto_update_task.start()
     print('------')
 
 @bot.tree.command(name="active", description="Displays active CAR alerts.")
