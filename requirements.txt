@@ -1,6 +1,5 @@
-discord.py
+discord.py[speed,voice]
 requests
 python-dotenv
 av
 numpy
-pynacl

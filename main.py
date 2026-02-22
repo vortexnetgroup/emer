@@ -11,6 +11,8 @@ import asyncio
 import json
 import re
 import html
+import sys
+import subprocess
 
 # --- Bot Setup ---
 intents = discord.Intents.default()
@@ -1013,8 +1015,46 @@ async def nws_forecast(interaction: discord.Interaction, zipcode: str):
     embed.set_footer(text="Data provided by National Weather Service")
     await interaction.followup.send(embed=embed)
 
+def check_for_updates():
+    """Checks for updates from GitHub and auto-updates if needed."""
+    try:
+        # Check if inside a git repository
+        subprocess.check_output(["git", "rev-parse", "--is-inside-work-tree"], stderr=subprocess.DEVNULL)
+        
+        print("Checking for updates...")
+        subprocess.check_call(["git", "fetch"])
+        
+        local_commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip().decode('utf-8')
+        try:
+            remote_commit = subprocess.check_output(["git", "rev-parse", "@{u}"]).strip().decode('utf-8')
+        except subprocess.CalledProcessError:
+            # Fallback: try origin/main if upstream not configured
+            remote_commit = subprocess.check_output(["git", "rev-parse", "origin/main"]).strip().decode('utf-8')
+            
+        if local_commit != remote_commit:
+            print("Update found! Downloading latest version...")
+            subprocess.check_call(["git", "pull"])
+            
+            is_windows = os.name == 'nt'
+            pip_cmd = "pip" if is_windows else "pip3"
+            python_cmd = "python" if is_windows else "python3"
+            
+            print(f"Installing requirements with {pip_cmd}...")
+            subprocess.check_call([pip_cmd, "install", "-r", "requirements.txt"])
+            
+            print(f"Restarting bot with {python_cmd}...")
+            os.execvp(python_cmd, [python_cmd, "main.py"])
+        else:
+            print("Bot is up to date.")
+            
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("Skipping update check (not a git repo or git not found).")
+    except Exception as e:
+        print(f"Update check failed: {e}")
+
 # --- Run Bot ---
 if __name__ == "__main__":
+    check_for_updates()
     if not settings.DISCORD_TOKEN or settings.DISCORD_TOKEN == "YOUR_BOT_TOKEN_HERE":
         print("Error: DISCORD_TOKEN not found or not set in .env file.")
     else:
