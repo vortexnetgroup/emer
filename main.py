@@ -405,13 +405,15 @@ def create_alert_embed(alert, current_page, total_pages):
     embed.add_field(name="Rarity", value=rarity, inline=True)
     embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
 
-    start_time_str = format_time_to_discord(alert.get('startTime', 'N/A'))
-    end_time_str = format_time_to_discord(alert.get('endTime', 'N/A'))
+    start_time = format_time_to_discord(alert.get('startTime', 'N/A'))
+    end_time = format_time_to_discord(alert.get('endTime', 'N/A'))
+
+    embed.add_field(name="Start Time", value=start_time, inline=True)
+    embed.add_field(name="End Time", value=end_time, inline=True)
 
     footer_text = (
         f"FIPS: {', '.join(alert.get('fipsCodes') or []) or 'N/A'} | "
-        f"Issued by/Callsign: {(alert.get('callsign') or 'N/A').strip()}\n"
-        f"Start: {start_time_str} | End: {end_time_str}"
+        f"Issued by/Callsign: {(alert.get('callsign') or 'N/A').strip()}"
     )
     embed.set_footer(text=footer_text)
 
