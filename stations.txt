@@ -6,3 +6,5 @@ WXJ37 NM Farmington https://radio.weatherusa.net/NWR/WXJ37.mp3
 KHB60 WA Seattle https://wxradio.bobc.io/stream/KHB60
 KEC56 TX Dallas https://wxradio.org/TX-Dallas-KEC56 
 WXL34 NY Albany https://wxradio.org/NY-Albany-WXL34 
+
+g
