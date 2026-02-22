@@ -31,15 +31,21 @@ python installed on your system.
 2. open a terminal in the project folder.
 3. create a virtual environment named "emer" and activate it:
    ```bash
-   python -m venv emer
    # Windows
+   python -m venv emer
    emer\Scripts\activate
+
    # Linux/macOS
+   python3 -m venv emer
    source emer/bin/activate
    ```
 4. install the required libraries by running:
    ```bash
+   # Windows
    pip install -r requirements.txt
+
+   # Linux/macOS
+   pip3 install -r requirements.txt
    ```
 
 ## configuration
@@ -66,7 +72,11 @@ WJON WeatherScan https://radio.wjonip.org/WJON-WSCN
 ## start bot
 start the bot by running:
 ```bash
+# Windows
 python main.py
+
+# Linux/macOS
+python3 main.py
 ```
 
 ## examples/preview
