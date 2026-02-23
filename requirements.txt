@@ -2,5 +2,4 @@ discord.py[speed,voice]
 requests
 python-dotenv
 av
-numpy # dependency of av
-PyNaCl
+numpy
