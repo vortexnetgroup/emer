@@ -21,6 +21,7 @@ Linux test (Ubuntu 24.04.4 LTS) by [Seasonal_Currency](https://github.com/Curren
 
 # i want to see emer in action instantly!
 join our offical emer testing server.
+
 https://discord.gg/MR7C6dwACP
 
 
