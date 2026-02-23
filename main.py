@@ -1165,8 +1165,9 @@ async def iemradmap(interaction: discord.Interaction, zipcode: str, time: str):
         file = discord.File(filepath, filename=filename)
         embed = discord.Embed(
             title=f"IEM Radar Map for {loc_data['city']}, {loc_data['state']} ({zipcode})",
-            color=discord.Color.blue()
+            color=discord.Color(0xffffff)
         )
+        embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
         embed.set_image(url=f"attachment://{filename}")
 
         time_display = "Latest" if time == "latest" else f"UTC {time[8:10]}:{time[10:12]} on {time[4:6]}/{time[6:8]}/{time[0:4]}"
