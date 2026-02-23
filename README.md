@@ -12,6 +12,12 @@ this follows the GPL-3.0 license so be fair with the project
 
 feedback. pull requests and issues reported would be gladly appreciated!
 
+Windows test by [dev1](https://github.com/meowgoober) at vortexnet
+
+macOS test by TheGrinnerWX
+
+Linux test (Ubuntu 24.04.4 LTS) by [Seasonal_Currency](https://github.com/CurrencyDev) / [forgejo](https://git.seasonalnet.org/Seasonal_Currency)
+
 
 # i want to see emer in action instantly!
 join our offical emer testing server.
