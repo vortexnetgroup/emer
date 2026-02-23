@@ -1108,6 +1108,95 @@ async def nws_forecast(interaction: discord.Interaction, zipcode: str):
     embed.set_footer(text="Data provided by National Weather Service")
     await interaction.followup.send(embed=embed)
 
+@bot.tree.command(name="iemradmap", description="Generates a radar map from IEM for a given ZIP code.")
+@discord.app_commands.describe(zipcode="The 5-digit ZIP code for the center of the map.",
+                               time="The time for the radar image. 'latest' or a recent UTC time.")
+async def iemradmap(interaction: discord.Interaction, zipcode: str, time: str):
+    if not zipcode.isdigit() or len(zipcode) != 5:
+        await interaction.response.send_message("Please enter a valid 5-digit ZIP code.", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+
+    loc_data = await get_location_from_zip(zipcode)
+    if not loc_data:
+        await interaction.followup.send(f"Could not find location for ZIP code: {zipcode}")
+        return
+
+    lat = float(loc_data['lat'])
+    lon = float(loc_data['lon'])
+
+    # Create a bounding box around the location
+    bbox = f"{lon - 1.5},{lat - 1.5},{lon + 1.5},{lat + 1.5}"
+
+    # Construct the base URL
+    base_radmap_url = "https://mesonet.agron.iastate.edu/GIS/radmap.php"
+    params = {
+        'layers[]': 'nexrad',
+        'bbox': bbox,
+        'width': 640,
+        'height': 480,
+    }
+
+    if time != "latest":
+        params['ts'] = time
+    
+    request_url = requests.Request('GET', base_radmap_url, params=params).prepare().url
+
+    try:
+        loop = bot.loop
+        response = await loop.run_in_executor(
+            None,
+            lambda: requests.get(request_url, timeout=15)
+        )
+        response.raise_for_status()
+
+        if 'image/png' not in response.headers.get('Content-Type', ''):
+            await interaction.followup.send("The API did not return an image. Please try again later.")
+            return
+
+        image_data = response.content
+        filename = f"radmap_{zipcode}_{time}.png"
+        filepath = settings.BASE_DIR / filename
+        
+        with open(filepath, 'wb') as f:
+            f.write(image_data)
+
+        file = discord.File(filepath, filename=filename)
+        embed = discord.Embed(
+            title=f"IEM Radar Map for {loc_data['city']}, {loc_data['state']} ({zipcode})",
+            color=discord.Color.blue()
+        )
+        embed.set_image(url=f"attachment://{filename}")
+
+        time_display = "Latest" if time == "latest" else f"UTC {time[8:10]}:{time[10:12]} on {time[4:6]}/{time[6:8]}/{time[0:4]}"
+        embed.set_footer(text=f"Time: {time_display} | Provided by Iowa Environmental Mesonet")
+
+        await interaction.followup.send(embed=embed, file=file)
+
+    except requests.exceptions.RequestException as e:
+        await interaction.followup.send(f"Failed to fetch radar image: {e}")
+    finally:
+        if 'filepath' in locals() and os.path.exists(filepath):
+            os.remove(filepath)
+
+@iemradmap.autocomplete('time')
+async def iemradmap_time_autocomplete(interaction: discord.Interaction, current: str) -> list[discord.app_commands.Choice[str]]:
+    choices = [discord.app_commands.Choice(name="Latest", value="latest")]
+    now = datetime.datetime.utcnow()
+    
+    # Round down to the nearest 5 minutes
+    start_minute = (now.minute // 5) * 5
+    rounded_now = now.replace(minute=start_minute, second=0, microsecond=0)
+    
+    for i in range(12): # Last 3 hours in 15 min increments
+        dt = rounded_now - datetime.timedelta(minutes=i * 15)
+        time_str = dt.strftime("%Y%m%d%H%M")
+        display_str = dt.strftime("%H:%M UTC on %Y-%m-%d")
+        choices.append(discord.app_commands.Choice(name=display_str, value=time_str))
+
+    return [choice for choice in choices if current.lower() in choice.name.lower()][:25]
+
 def check_for_updates():
     """Checks for updates from GitHub and auto-updates if needed."""
     try:
