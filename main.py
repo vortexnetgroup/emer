@@ -321,25 +321,6 @@ IEMBOT_ROOMS = {
     "phl": "PHL TRACON Philadephia"
 }
 
-# --- US States Mapping ---
-US_STATES = {
-    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
-    "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia",
-    "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa",
-    "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
-    "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi",
-    "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire",
-    "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York", "NC": "North Carolina",
-    "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania",
-    "RI": "Rhode Island", "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee",
-    "TX": "Texas", "UT": "Utah", "VT": "Vermont", "VA": "Virginia", "WA": "Washington",
-    "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming",
-    # Territories
-    "AS": "American Samoa", "DC": "District of Columbia", "FM": "Federated States of Micronesia",
-    "GU": "Guam", "MH": "Marshall Islands", "MP": "Northern Mariana Islands", "PW": "Palau",
-    "PR": "Puerto Rico", "VI": "U.S. Virgin Islands"
-}
-
 # --- Helper function for API calls ---
 async def fetch_alerts(endpoint, params=None):
     """Fetches alerts from a given API endpoint asynchronously."""
@@ -1127,63 +1108,35 @@ async def nws_forecast(interaction: discord.Interaction, zipcode: str):
     embed.set_footer(text="Data provided by National Weather Service")
     await interaction.followup.send(embed=embed)
 
-async def state_autocomplete(interaction: discord.Interaction, current: str) -> list[discord.app_commands.Choice[str]]:
-    return [
-        discord.app_commands.Choice(name=f"{name} ({abbr})", value=abbr)
-        for abbr, name in US_STATES.items()
-        if current.lower() in name.lower() or current.lower() in abbr.lower()
-    ][:25]
-
-@bot.tree.command(name="iemradmap", description="Generates a radar map from IEM for a given location.")
-@discord.app_commands.describe(zipcode="The 5-digit ZIP code for the map's center.",
-                               state="The 2-letter state abbreviation for the map's area.",
-                               time="The time for the radar image (defaults to 'latest').")
-@discord.app_commands.autocomplete(state=state_autocomplete)
-async def iemradmap(interaction: discord.Interaction, zipcode: str = None, state: str = None, time: str = "latest"):
-    if not zipcode and not state:
-        await interaction.response.send_message("Please provide either a ZIP code or a state abbreviation.", ephemeral=True)
-        return
-    if zipcode and state:
-        await interaction.response.send_message("Please provide either a ZIP code or a state, not both.", ephemeral=True)
+@bot.tree.command(name="iemradmap", description="Generates a radar map from IEM for a given ZIP code.")
+@discord.app_commands.describe(zipcode="The 5-digit ZIP code for the center of the map.",
+                               time="The time for the radar image. 'latest' or a recent UTC time.")
+async def iemradmap(interaction: discord.Interaction, zipcode: str, time: str):
+    if not zipcode.isdigit() or len(zipcode) != 5:
+        await interaction.response.send_message("Please enter a valid 5-digit ZIP code.", ephemeral=True)
         return
 
     await interaction.response.defer()
+
+    loc_data = await get_location_from_zip(zipcode)
+    if not loc_data:
+        await interaction.followup.send(f"Could not find location for ZIP code: {zipcode}")
+        return
+
+    lat = float(loc_data['lat'])
+    lon = float(loc_data['lon'])
+
+    # Create a bounding box around the location
+    bbox = f"{lon - 1.5},{lat - 1.5},{lon + 1.5},{lat + 1.5}"
 
     # Construct the base URL
     base_radmap_url = "https://mesonet.agron.iastate.edu/GIS/radmap.php"
     params = {
         'layers[]': 'nexrad',
+        'bbox': bbox,
         'width': 640,
         'height': 480,
     }
-    title_location = ""
-    filename_part = ""
-
-    if zipcode:
-        if not zipcode.isdigit() or len(zipcode) != 5:
-            await interaction.followup.send("Please enter a valid 5-digit ZIP code.")
-            return
-
-        loc_data = await get_location_from_zip(zipcode)
-        if not loc_data:
-            await interaction.followup.send(f"Could not find location for ZIP code: {zipcode}")
-            return
-
-        lat = float(loc_data['lat'])
-        lon = float(loc_data['lon'])
-        params['bbox'] = f"{lon - 1.5},{lat - 1.5},{lon + 1.5},{lat + 1.5}"
-        title_location = f"{loc_data['city']}, {loc_data['state']} ({zipcode})"
-        filename_part = zipcode
-    
-    elif state:
-        state_code = state.upper()
-        state_name = US_STATES.get(state_code)
-        if not state_name:
-            await interaction.followup.send("Please enter a valid 2-letter US state or territory abbreviation.")
-            return
-        params['sector'] = state_code
-        title_location = f"State of {state_name}"
-        filename_part = state_code
 
     if time != "latest":
         params['ts'] = time
@@ -1191,20 +1144,29 @@ async def iemradmap(interaction: discord.Interaction, zipcode: str = None, state
     request_url = requests.Request('GET', base_radmap_url, params=params).prepare().url
 
     try:
-        response = await bot.loop.run_in_executor(None, lambda: requests.get(request_url, timeout=15))
+        loop = bot.loop
+        response = await loop.run_in_executor(
+            None,
+            lambda: requests.get(request_url, timeout=15)
+        )
         response.raise_for_status()
 
         if 'image/png' not in response.headers.get('Content-Type', ''):
             await interaction.followup.send("The API did not return an image. Please try again later.")
             return
 
-        filename = f"radmap_{filename_part}_{time}.png"
+        image_data = response.content
+        filename = f"radmap_{zipcode}_{time}.png"
         filepath = settings.BASE_DIR / filename
+        
         with open(filepath, 'wb') as f:
-            f.write(response.content)
+            f.write(image_data)
 
         file = discord.File(filepath, filename=filename)
-        embed = discord.Embed(title=f"IEM Radar Map for {title_location}", color=discord.Color(0xffffff))
+        embed = discord.Embed(
+            title=f"IEM Radar Map for {loc_data['city']}, {loc_data['state']} ({zipcode})",
+            color=discord.Color(0xffffff)
+        )
         embed.set_thumbnail(url="https://files.catbox.moe/uc137x.png")
         embed.set_image(url=f"attachment://{filename}")
 
@@ -1212,6 +1174,7 @@ async def iemradmap(interaction: discord.Interaction, zipcode: str = None, state
         embed.set_footer(text=f"Time: {time_display} | Provided by Iowa Environmental Mesonet")
 
         await interaction.followup.send(embed=embed, file=file)
+
     except requests.exceptions.RequestException as e:
         await interaction.followup.send(f"Failed to fetch radar image: {e}")
     finally:
