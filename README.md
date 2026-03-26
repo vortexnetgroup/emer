@@ -25,6 +25,11 @@ join our offical emer testing server.
 https://discord.gg/MR7C6dwACP
 
 
+optional but join the vn server:
+
+https://discord.gg/8bWuw2T7wf
+
+
 
 
 # how 2 setup the discord bot
