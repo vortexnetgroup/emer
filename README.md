@@ -4,7 +4,7 @@
 
 # about
 
-Emer is a full open source remake of a previous old project dev1 made back in 2024/2025. it is a eas tracker and weather/eas utility bot and you can use this in any server.
+Emer v2 is a full open source remake of a previous old project dev1/dorker made back in 2024/2025. it is a eas tracker and weather/eas utility bot and you can use this in any server if you host this on a server.
 
 
 this follows the GPL-3.0 license so be fair with the project
