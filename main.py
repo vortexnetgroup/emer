@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands, tasks
-import requests
+import requests 
 import settings
 import os
 import atexit
